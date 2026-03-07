@@ -131,14 +131,14 @@ namespace plume
 #ifdef MARATHON_RECOMP_METAL
 extern std::unique_ptr<RenderInterface> CreateMetalInterface();
 #endif
-#ifdef SDL_VULKAN_ENABLED
+#ifdef PLUME_SDL_VULKAN_ENABLED
     extern std::unique_ptr<RenderInterface> CreateVulkanInterface(RenderWindow sdlWindow);
 #else
     extern std::unique_ptr<RenderInterface> CreateVulkanInterface();
 #endif
 
     static std::unique_ptr<RenderInterface> CreateVulkanInterfaceWrapper() {
-#ifdef SDL_VULKAN_ENABLED
+#ifdef PLUME_SDL_VULKAN_ENABLED
         return CreateVulkanInterface(GameWindow::s_renderWindow);
 #else
         return CreateVulkanInterface();
@@ -1580,8 +1580,6 @@ static void CreateImGuiBackend()
 #endif
 
     InitImGuiUtils();
-    AchievementMenu::Init();
-    AchievementOverlay::Init();
     OptionsMenu::Init();
     InstallerWizard::Init();
 
@@ -2061,7 +2059,14 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
         break;
     }
 
-    g_swapChain = g_queue->createSwapChain(GameWindow::s_renderWindow, bufferCount, BACKBUFFER_FORMAT, Config::MaxFrameLatency);
+    RenderSwapChainDesc swapChainDesc;
+    swapChainDesc.renderWindow = GameWindow::s_renderWindow;
+    swapChainDesc.textureCount = bufferCount;
+    swapChainDesc.format = BACKBUFFER_FORMAT;
+    swapChainDesc.maxFrameLatency = Config::MaxFrameLatency;
+    swapChainDesc.enablePresentWait = g_capabilities.presentWait;
+
+    g_swapChain = g_queue->createSwapChain(swapChainDesc);
     g_swapChain->setVsyncEnabled(Config::VSync);
     g_swapChainValid = !g_swapChain->needsResize();
 
@@ -2308,17 +2313,17 @@ static uint32_t getSetAddress(uint32_t base, int index) {
 static uint32_t CreateDevice(uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5, be<uint32_t>* a6)
 {
     LOGF_WARNING("{:p} {:p} {:p} {:p} {:p} {:p}\n", reinterpret_cast<void*>(a1), reinterpret_cast<void*>(a2), reinterpret_cast<void*>(a3), reinterpret_cast<void*>(a4), reinterpret_cast<void*>(a5), reinterpret_cast<void*>(a6));
-    g_xdbfTextureCache = std::unordered_map<uint16_t, GuestTexture *>();
+    
+    g_xdbfTextureCache = std::unordered_map<uint16_t, GuestTexture*>();
 
-    // for (auto &achievement : g_xdbfWrapper.GetAchievements(XDBF_LANGUAGE_ENGLISH))
-    // {
-    //     // huh?
-    //     if (!achievement.pImageBuffer || !achievement.ImageBufferSize)
-    //         continue;
+    for (auto &achievement : g_xdbfWrapper.GetAchievements(XDBF_LANGUAGE_ENGLISH))
+    {
+        if (!achievement.pImageBuffer || !achievement.ImageBufferSize)
+            continue;
 
-    //     g_xdbfTextureCache[achievement.ID] =
-    //         LoadTexture((uint8_t *)achievement.pImageBuffer, achievement.ImageBufferSize).release();
-    // }
+        g_xdbfTextureCache[achievement.ID] =
+            LoadTexture((uint8_t *)achievement.pImageBuffer, achievement.ImageBufferSize).release();
+    }
 
     // Move backbuffer to guest memory.
     assert(!g_memory.IsInMemoryRange(g_backBuffer) && g_backBufferHolder != nullptr);
@@ -2910,12 +2915,13 @@ static void DrawImGui()
     ImGui::End();
 #endif
 
+    UpdateImGuiUtils();
     AchievementMenu::Draw();
     OptionsMenu::Draw();
-    AchievementOverlay::Draw();
     InstallerWizard::Draw();
     ButtonWindow::Draw();
     MessageWindow::Draw();
+    AchievementOverlay::Draw();
     Fader::Draw();
     BlackBar::Draw();
 
